@@ -1,0 +1,11 @@
+#! /bin/sh
+
+ADDON_DIR_BIN=/storage/.kodi/addons/script.module.selenium/bin/chromedriver/libreelec
+
+DRIVER_VERSION=2.38
+DRIVER_DIR=$ADDON_DIR_BIN/$DRIVER_VERSION/chromedriver
+DRIVER_LIBS=$ADDON_DIR_BIN/lib
+
+chmod a+x $DRIVER_DIR
+
+LD_LIBRARY_PATH=$DRIVER_LIBS exec $DRIVER_DIR "$@"
