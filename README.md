@@ -1,6 +1,6 @@
 # Selenium automates browsers for KODI.
-#
-# Example
+
+ Example
 #
 # ...
 #
