@@ -12,7 +12,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from selenium.webdriver.common.driver_utils import get_driver_path
-from selenium.webdriver.common.driver_utils import run_selenium_doker</p>
+from selenium.webdriver.common.driver_utils import run_selenium_doker
 ...
 Addon = xbmcaddon.Addon('plugin.video.adult.freeomovie')
 Docker = Addon.getSetting('use_docker')
