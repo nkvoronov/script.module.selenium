@@ -1,8 +1,8 @@
 # Selenium automates browsers for KODI.
 
 <p>Example</p>
-...
-import xbmcaddon
+<p>...</p>
+<p>import xbmcaddon
 from BeautifulSoup import BeautifulSoup, SoupStrainer, Comment
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -10,8 +10,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from selenium.webdriver.common.driver_utils import get_driver_path
-from selenium.webdriver.common.driver_utils import run_selenium_doker
-...
+from selenium.webdriver.common.driver_utils import run_selenium_doker</p>
+<p>...</p>
 Addon = xbmcaddon.Addon('plugin.video.adult.freeomovie')
 Docker = Addon.getSetting('use_docker')
 WebTimeOut = Addon.getSetting('web_timeout')
