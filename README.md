@@ -1,6 +1,6 @@
 # Selenium automates browsers for KODI.
 
-Example
+<p>Example</p>
 ...
 import xbmcaddon
 from BeautifulSoup import BeautifulSoup, SoupStrainer, Comment
