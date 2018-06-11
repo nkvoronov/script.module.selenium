@@ -2,7 +2,7 @@
 
 ADDON_DIR_BIN=/storage/.kodi/addons/script.module.selenium/bin/chromedriver/libreelec
 
-DRIVER_VERSION=2.38
+DRIVER_VERSION=2.40
 DRIVER_DIR=$ADDON_DIR_BIN/$DRIVER_VERSION/chromedriver
 DRIVER_LIBS=$ADDON_DIR_BIN/lib
 
