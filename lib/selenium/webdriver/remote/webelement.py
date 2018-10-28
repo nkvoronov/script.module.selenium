@@ -482,7 +482,7 @@ class WebElement(object):
     def is_displayed(self):
         """Whether the element is visible to a user."""
         # Only go into this conditional for browsers that don't use the atom themselves
-        if self._w3c and self.parent.capabilities['browserName'] == 'safari':
+        if self._w3c:
             return self.parent.execute_script(
                 "return (%s).apply(null, arguments);" % isDisplayed_js,
                 self)
@@ -539,7 +539,12 @@ class WebElement(object):
     @property
     def rect(self):
         """A dictionary with the size and location of the element."""
-        return self._execute(Command.GET_ELEMENT_RECT)['value']
+        if self._w3c:
+            return self._execute(Command.GET_ELEMENT_RECT)['value']
+        else:
+            rect = self.size.copy()
+            rect.update(self.location)
+            return rect
 
     @property
     def screenshot_as_base64(self):
@@ -629,10 +634,11 @@ class WebElement(object):
 
     def find_element(self, by=By.ID, value=None):
         """
-        'Private' method used by the find_element_by_* methods.
+        Find an element given a By strategy and locator. Prefer the find_element_by_* methods when
+        possible.
 
         :Usage:
-            Use the corresponding find_element_by_* instead of this.
+            element = element.find_element(By.ID, 'foo')
 
         :rtype: WebElement
         """
@@ -654,10 +660,11 @@ class WebElement(object):
 
     def find_elements(self, by=By.ID, value=None):
         """
-        'Private' method used by the find_elements_by_* methods.
+        Find elements given a By strategy and locator. Prefer the find_elements_by_* methods when
+        possible.
 
         :Usage:
-            Use the corresponding find_elements_by_* instead of this.
+            element = element.find_elements(By.CLASS_NAME, 'foo')
 
         :rtype: list of WebElement
         """
