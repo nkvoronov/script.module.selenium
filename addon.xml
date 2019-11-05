@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="script.module.selenium"
 		name="Selenium and Web Drivers"
-		version="3.141.59.012"
+		version="3.141.59.013"
 		provider-name="YDRAGON">
 	<requires>
 		<import addon="xbmc.python" version="2.18.0" />
@@ -10,11 +10,15 @@
 	<extension point="xbmc.python.module" library="lib" />
 	<extension point="xbmc.addon.metadata">
 		<platform>all</platform>
-		<summary>Selenium automates browsers.</summary>
-		<description>Selenium has the support of some of the largest browser vendors who have taken (or are taking) steps to make Selenium a native part of their browser. It is also the core technology in countless other browser automation tools, APIs and frameworks.</description>
+		<summary lang="en_gb">Selenium automates browsers.</summary>
+		<summary lang="ru_RU">Selenium автоматизация браузеров.</summary>
+		<summary lang="uk_UA">Selenium автоматизація браузерів.</summary>
+		<description lang="en_gb">Selenium has the support of some of the largest browser vendors who have taken (or are taking) steps to make Selenium a native part of their browser. It is also the core technology in countless other browser automation tools, APIs and frameworks.</description>
+		<description lang="ru_RU">Selenium имеет поддержку крупнейших поставщиков браузеров, которые предприняли (или предпринимают) шаги, чтобы сделать Selenium встроенной частью своего браузера. Это также основная технология в бесчисленных других инструментах автоматизации браузеров, API-интерфейсах и инфраструктурах.</description>
+		<description lang="uk_UA">Selenium має підтримку найбільших постачальників браузерів, які зробили (або роблять) кроки, щоб зробити Selenium вбудованої частиною свого браузера. Це також впровадженню найважливіших технологічних досягнень в незліченних інших інструментах автоматизації браузерів, API-інтерфейсів і інфраструктурах.</description>
 		<license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
-        <platform>all</platform>
-        <email>nkvoronov@gmail.com</email>
+		<platform>all</platform>
+		<email>nkvoronov@gmail.com</email>
 		<source>https://github.com/nkvoronov/script.module.selenium.git</source>
 	</extension>
 </addon>
