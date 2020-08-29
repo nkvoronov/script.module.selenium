@@ -40,9 +40,6 @@ def get_driver_path(dname):
     if platform.system() == 'Windows':
         result = rpath + 'win32' + os.path.sep + dname
     if platform.system() == 'Linux':
-        if xbmc.getCondVisibility('System.HasAddon(service.libreelec.settings)'):
-            result = rpath + 'libreelec' + os.path.sep + dname
-        else:
             result = rpath + 'linux64' + os.path.sep + dname
         if dname == 'docker':
             result = result + '.start'
