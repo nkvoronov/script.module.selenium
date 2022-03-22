@@ -15,36 +15,38 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import base64
-import hashlib
 import os
+from base64 import b64decode, encodebytes
+from hashlib import md5 as md5_hash
 import pkgutil
 import warnings
 import zipfile
+from abc import ABCMeta
+from io import BytesIO
 
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.utils import keys_to_typing
 from .command import Command
+from .shadowroot import ShadowRoot
 
-# Python 3 imports
-try:
-    str = basestring
-except NameError:
-    pass
 
-try:
-    from StringIO import StringIO as IOStream
-except ImportError:  # 3+
-    from io import BytesIO as IOStream
-
-# not relying on __package__ here as it can be `None` in some situations (see #4558)
+# TODO: When moving to supporting python 3.9 as the minimum version we can
+# use built in importlib_resources.files.
 _pkg = '.'.join(__name__.split('.')[:-1])
 getAttribute_js = pkgutil.get_data(_pkg, 'getAttribute.js').decode('utf8')
 isDisplayed_js = pkgutil.get_data(_pkg, 'isDisplayed.js').decode('utf8')
 
 
-class WebElement(object):
+class BaseWebElement(metaclass=ABCMeta):
+    """
+    Abstract Base Class for WebElement.
+    ABC's will allow custom types to be registered as a WebElement to pass type checks.
+    """
+    pass
+
+
+class WebElement(BaseWebElement):
     """Represents a DOM element.
 
     Generally, all interesting operations that interact with a document will be
@@ -56,62 +58,74 @@ class WebElement(object):
     ``StaleElementReferenceException`` is thrown, and all future calls to this
     instance will fail."""
 
-    def __init__(self, parent, id_, w3c=False):
+    def __init__(self, parent, id_):
         self._parent = parent
         self._id = id_
-        self._w3c = w3c
 
     def __repr__(self):
         return '<{0.__module__}.{0.__name__} (session="{1}", element="{2}")>'.format(
             type(self), self._parent.session_id, self._id)
 
     @property
-    def tag_name(self):
+    def tag_name(self) -> str:
         """This element's ``tagName`` property."""
         return self._execute(Command.GET_ELEMENT_TAG_NAME)['value']
 
     @property
-    def text(self):
+    def text(self) -> str:
         """The text of the element."""
         return self._execute(Command.GET_ELEMENT_TEXT)['value']
 
-    def click(self):
+    def click(self) -> None:
         """Clicks the element."""
         self._execute(Command.CLICK_ELEMENT)
 
     def submit(self):
         """Submits a form."""
-        if self._w3c:
-            form = self.find_element(By.XPATH, "./ancestor-or-self::form")
-            self._parent.execute_script(
-                "var e = arguments[0].ownerDocument.createEvent('Event');"
-                "e.initEvent('submit', true, true);"
-                "if (arguments[0].dispatchEvent(e)) { arguments[0].submit() }", form)
-        else:
-            self._execute(Command.SUBMIT_ELEMENT)
+        form = self.find_element(By.XPATH, "./ancestor-or-self::form")
+        self._parent.execute_script(
+            "var e = arguments[0].ownerDocument.createEvent('Event');"
+            "e.initEvent('submit', true, true);"
+            "if (arguments[0].dispatchEvent(e)) { arguments[0].submit() }", form)
 
-    def clear(self):
+    def clear(self) -> None:
         """Clears the text if it's a text entry element."""
         self._execute(Command.CLEAR_ELEMENT)
 
-    def get_property(self, name):
+    def get_property(self, name) -> str:
         """
         Gets the given property of the element.
 
         :Args:
             - name - Name of the property to retrieve.
 
-        Example::
+        :Usage:
+            ::
 
-            text_length = target_element.get_property("text_length")
+                text_length = target_element.get_property("text_length")
         """
         try:
             return self._execute(Command.GET_ELEMENT_PROPERTY, {"name": name})["value"]
         except WebDriverException:
-            # if we hit an end point that doesnt understand getElementProperty lets fake it
+            # if we hit an end point that doesn't understand getElementProperty lets fake it
             return self.parent.execute_script('return arguments[0][arguments[1]]', self, name)
 
-    def get_attribute(self, name):
+    def get_dom_attribute(self, name) -> str:
+        """
+        Gets the given attribute of the element. Unlike :func:`~selenium.webdriver.remote.BaseWebElement.get_attribute`,
+        this method only returns attributes declared in the element's HTML markup.
+
+        :Args:
+            - name - Name of the attribute to retrieve.
+
+        :Usage:
+            ::
+
+                text_length = target_element.get_dom_attribute("class")
+        """
+        return self._execute(Command.GET_ELEMENT_ATTRIBUTE, {"name": name})["value"]
+
+    def get_attribute(self, name) -> str:
         """Gets the given attribute or property of the element.
 
         This method will first try to return the value of a property with the
@@ -124,6 +138,10 @@ class WebElement(object):
         as strings.  For attributes or properties which do not exist, ``None``
         is returned.
 
+        To obtain the exact value of the attribute or property,
+        use :func:`~selenium.webdriver.remote.BaseWebElement.get_dom_attribute` or
+        :func:`~selenium.webdriver.remote.BaseWebElement.get_property` methods respectively.
+
         :Args:
             - name - Name of the attribute/property to retrieve.
 
@@ -134,27 +152,19 @@ class WebElement(object):
 
         """
 
-        attributeValue = ''
-        if self._w3c:
-            attributeValue = self.parent.execute_script(
-                "return (%s).apply(null, arguments);" % getAttribute_js,
-                self, name)
-        else:
-            resp = self._execute(Command.GET_ELEMENT_ATTRIBUTE, {'name': name})
-            attributeValue = resp.get('value')
-            if attributeValue is not None:
-                if name != 'value' and attributeValue.lower() in ('true', 'false'):
-                    attributeValue = attributeValue.lower()
-        return attributeValue
+        attribute_value = self.parent.execute_script(
+            "return (%s).apply(null, arguments);" % getAttribute_js,
+            self, name)
+        return attribute_value
 
-    def is_selected(self):
+    def is_selected(self) -> bool:
         """Returns whether the element is selected.
 
         Can be used to check if a checkbox or radio button is selected.
         """
         return self._execute(Command.IS_ELEMENT_SELECTED)['value']
 
-    def is_enabled(self):
+    def is_enabled(self) -> bool:
         """Returns whether the element is enabled."""
         return self._execute(Command.IS_ELEMENT_ENABLED)['value']
 
@@ -162,7 +172,7 @@ class WebElement(object):
         """Finds element within this element's children by ID.
 
         :Args:
-         - id\_ - ID of child element to locate.
+         - id\\_ - ID of child element to locate.
 
         :Returns:
          - WebElement - the element if it was found
@@ -171,8 +181,11 @@ class WebElement(object):
          - NoSuchElementException - if the element wasn't found
 
         :Usage:
-            foo_element = element.find_element_by_id('foo')
+            ::
+
+                foo_element = element.find_element_by_id('foo')
         """
+        warnings.warn("find_element_by_id is deprecated. Please use find_element(by=By.ID, value=id_) instead")
         return self.find_element(by=By.ID, value=id_)
 
     def find_elements_by_id(self, id_):
@@ -180,15 +193,18 @@ class WebElement(object):
         Will return a list of webelements if found, or an empty list if not.
 
         :Args:
-         - id\_ - Id of child element to find.
+         - id\\_ - Id of child element to find.
 
         :Returns:
          - list of WebElement - a list with elements if any was found.  An
            empty list if not
 
         :Usage:
-            elements = element.find_elements_by_id('foo')
+            ::
+
+                elements = element.find_elements_by_id('foo')
         """
+        warnings.warn("find_elements_by_id is deprecated. Please use find_elements(by=By.ID, value=id_) instead")
         return self.find_elements(by=By.ID, value=id_)
 
     def find_element_by_name(self, name):
@@ -204,8 +220,11 @@ class WebElement(object):
          - NoSuchElementException - if the element wasn't found
 
         :Usage:
-            element = element.find_element_by_name('foo')
+            ::
+
+                element = element.find_element_by_name('foo')
         """
+        warnings.warn("find_element_by_name is deprecated. Please use find_element(by=By.NAME, value=name) instead")
         return self.find_element(by=By.NAME, value=name)
 
     def find_elements_by_name(self, name):
@@ -219,8 +238,11 @@ class WebElement(object):
            empty list if not
 
         :Usage:
-            elements = element.find_elements_by_name('foo')
+            ::
+
+                elements = element.find_elements_by_name('foo')
         """
+        warnings.warn("find_elements_by_name is deprecated. Please use find_elements(by=By.NAME, value=name) instead")
         return self.find_elements(by=By.NAME, value=name)
 
     def find_element_by_link_text(self, link_text):
@@ -236,8 +258,11 @@ class WebElement(object):
          - NoSuchElementException - if the element wasn't found
 
         :Usage:
-            element = element.find_element_by_link_text('Sign In')
+            ::
+
+                element = element.find_element_by_link_text('Sign In')
         """
+        warnings.warn("find_element_by_link_text is deprecated. Please use find_element(by=By.LINK_TEXT, value=link_text) instead")
         return self.find_element(by=By.LINK_TEXT, value=link_text)
 
     def find_elements_by_link_text(self, link_text):
@@ -251,8 +276,11 @@ class WebElement(object):
            empty list if not
 
         :Usage:
-            elements = element.find_elements_by_link_text('Sign In')
+            ::
+
+                elements = element.find_elements_by_link_text('Sign In')
         """
+        warnings.warn("find_elements_by_link_text is deprecated. Please use find_elements(by=By.LINK_TEXT, value=text) instead")
         return self.find_elements(by=By.LINK_TEXT, value=link_text)
 
     def find_element_by_partial_link_text(self, link_text):
@@ -268,8 +296,11 @@ class WebElement(object):
          - NoSuchElementException - if the element wasn't found
 
         :Usage:
-            element = element.find_element_by_partial_link_text('Sign')
+            ::
+
+                element = element.find_element_by_partial_link_text('Sign')
         """
+        warnings.warn("find_element_by_partial_link_text is deprecated. Please use find_element(by=By.PARTIAL_LINK_TEXT, value=link_text) instead")
         return self.find_element(by=By.PARTIAL_LINK_TEXT, value=link_text)
 
     def find_elements_by_partial_link_text(self, link_text):
@@ -283,8 +314,11 @@ class WebElement(object):
            empty list if not
 
         :Usage:
-            elements = element.find_elements_by_partial_link_text('Sign')
+            ::
+
+                elements = element.find_elements_by_partial_link_text('Sign')
         """
+        warnings.warn("find_elements_by_partial_link_text is deprecated. Please use find_elements(by=By.PARTIAL_LINK_TEXT, value=link_text) instead")
         return self.find_elements(by=By.PARTIAL_LINK_TEXT, value=link_text)
 
     def find_element_by_tag_name(self, name):
@@ -300,8 +334,11 @@ class WebElement(object):
          - NoSuchElementException - if the element wasn't found
 
         :Usage:
-            element = element.find_element_by_tag_name('h1')
+            ::
+
+                element = element.find_element_by_tag_name('h1')
         """
+        warnings.warn("find_element_by_tag_name is deprecated. Please use find_element(by=By.TAG_NAME, value=name) instead")
         return self.find_element(by=By.TAG_NAME, value=name)
 
     def find_elements_by_tag_name(self, name):
@@ -315,8 +352,11 @@ class WebElement(object):
            empty list if not
 
         :Usage:
-            elements = element.find_elements_by_tag_name('h1')
+            ::
+
+                elements = element.find_elements_by_tag_name('h1')
         """
+        warnings.warn("find_elements_by_tag_name is deprecated. Please use find_elements(by=By.TAG_NAME, value=name) instead")
         return self.find_elements(by=By.TAG_NAME, value=name)
 
     def find_element_by_xpath(self, xpath):
@@ -346,8 +386,11 @@ class WebElement(object):
          - NoSuchElementException - if the element wasn't found
 
         :Usage:
-            element = element.find_element_by_xpath('//div/td[1]')
+            ::
+
+                element = element.find_element_by_xpath('//div/td[1]')
         """
+        warnings.warn("find_element_by_xpath is deprecated. Please use find_element(by=By.XPATH, value=xpath) instead")
         return self.find_element(by=By.XPATH, value=xpath)
 
     def find_elements_by_xpath(self, xpath):
@@ -375,9 +418,12 @@ class WebElement(object):
            empty list if not
 
         :Usage:
-            elements = element.find_elements_by_xpath("//div[contains(@class, 'foo')]")
+            ::
+
+                elements = element.find_elements_by_xpath("//div[contains(@class, 'foo')]")
 
         """
+        warnings.warn("find_elements_by_xpath is deprecated. Please use find_elements(by=By.XPATH, value=xpath) instead")
         return self.find_elements(by=By.XPATH, value=xpath)
 
     def find_element_by_class_name(self, name):
@@ -393,8 +439,11 @@ class WebElement(object):
          - NoSuchElementException - if the element wasn't found
 
         :Usage:
-            element = element.find_element_by_class_name('foo')
+            ::
+
+                element = element.find_element_by_class_name('foo')
         """
+        warnings.warn("find_element_by_class_name is deprecated. Please use find_element(by=By.CLASS_NAME, value=name) instead")
         return self.find_element(by=By.CLASS_NAME, value=name)
 
     def find_elements_by_class_name(self, name):
@@ -408,8 +457,11 @@ class WebElement(object):
            empty list if not
 
         :Usage:
-            elements = element.find_elements_by_class_name('foo')
+            ::
+
+                elements = element.find_elements_by_class_name('foo')
         """
+        warnings.warn("find_elements_by_class_name is deprecated. Please use find_elements(by=By.CLASS_NAME, value=name) instead")
         return self.find_elements(by=By.CLASS_NAME, value=name)
 
     def find_element_by_css_selector(self, css_selector):
@@ -425,8 +477,11 @@ class WebElement(object):
          - NoSuchElementException - if the element wasn't found
 
         :Usage:
-            element = element.find_element_by_css_selector('#foo')
+            ::
+
+                element = element.find_element_by_css_selector('#foo')
         """
+        warnings.warn("find_element_by_css_selector is deprecated. Please use find_element(by=By.CSS_SELECTOR, value=css_selector) instead")
         return self.find_element(by=By.CSS_SELECTOR, value=css_selector)
 
     def find_elements_by_css_selector(self, css_selector):
@@ -440,11 +495,14 @@ class WebElement(object):
            empty list if not
 
         :Usage:
-            elements = element.find_elements_by_css_selector('.foo')
+            ::
+
+                elements = element.find_elements_by_css_selector('.foo')
         """
+        warnings.warn("find_elements_by_css_selector is deprecated. Please use find_elements(by=By.CSS_SELECTOR, value=css_selector) instead")
         return self.find_elements(by=By.CSS_SELECTOR, value=css_selector)
 
-    def send_keys(self, *value):
+    def send_keys(self, *value) -> None:
         """Simulates typing into the element.
 
         :Args:
@@ -453,14 +511,14 @@ class WebElement(object):
 
         Use this to send simple key events or to fill out form fields::
 
-            form_textfield = driver.find_element_by_name('username')
+            form_textfield = driver.find_element(By.NAME, 'username')
             form_textfield.send_keys("admin")
 
         This can also be used to set file inputs.
 
         ::
 
-            file_input = driver.find_element_by_name('profilePic')
+            file_input = driver.find_element(By.NAME, 'profilePic')
             file_input.send_keys("path/to/profilepic.gif")
             # Generally it's better to wrap the file path in one of the methods
             # in os.path to return the actual path to support cross OS testing.
@@ -470,27 +528,45 @@ class WebElement(object):
         # transfer file to another machine only if remote driver is used
         # the same behaviour as for java binding
         if self.parent._is_remote:
-            local_file = self.parent.file_detector.is_local_file(*value)
-            if local_file is not None:
-                value = self._upload(local_file)
+            local_files = list(map(lambda keys_to_send:
+                                   self.parent.file_detector.is_local_file(str(keys_to_send)),
+                                   ''.join(map(str, value)).split('\n')))
+            if None not in local_files:
+                remote_files = []
+                for file in local_files:
+                    remote_files.append(self._upload(file))
+                value = '\n'.join(remote_files)
 
         self._execute(Command.SEND_KEYS_TO_ELEMENT,
                       {'text': "".join(keys_to_typing(value)),
                        'value': keys_to_typing(value)})
 
+    @property
+    def shadow_root(self) -> ShadowRoot:
+        """
+            Returns a shadow root of the element if there is one or an error. Only works from
+            Chromium 96 onwards. Previous versions of Chromium based browsers will throw an
+            assertion exception.
+
+            :Returns:
+              - ShadowRoot object or
+              - NoSuchShadowRoot - if no shadow root was attached to element
+        """
+        browser_main_version = int(self._parent.caps["browserVersion"].split(".")[0])
+        assert self._parent.caps["browserName"].lower() not in ["firefox", "safari"], "This only currently works in Chromium based browsers"
+        assert not browser_main_version <= 95, f"Please use Chromium based browsers with version 96 or later. Version used {self._parent.caps['browserVersion']}"
+        return self._execute(Command.GET_SHADOW_ROOT)['value']
+
     # RenderedWebElement Items
-    def is_displayed(self):
+    def is_displayed(self) -> bool:
         """Whether the element is visible to a user."""
         # Only go into this conditional for browsers that don't use the atom themselves
-        if self._w3c:
-            return self.parent.execute_script(
-                "return (%s).apply(null, arguments);" % isDisplayed_js,
-                self)
-        else:
-            return self._execute(Command.IS_ELEMENT_DISPLAYED)['value']
+        return self.parent.execute_script(
+            "return (%s).apply(null, arguments);" % isDisplayed_js,
+            self)
 
     @property
-    def location_once_scrolled_into_view(self):
+    def location_once_scrolled_into_view(self) -> dict:
         """THIS PROPERTY MAY CHANGE WITHOUT WARNING. Use this to discover
         where on the screen an element is so that we can click it. This method
         should cause the element to be scrolled into view.
@@ -499,74 +575,73 @@ class WebElement(object):
         the element is not visible.
 
         """
-        if self._w3c:
-            old_loc = self._execute(Command.W3C_EXECUTE_SCRIPT, {
-                'script': "arguments[0].scrollIntoView(true); return arguments[0].getBoundingClientRect()",
-                'args': [self]})['value']
-            return {"x": round(old_loc['x']),
-                    "y": round(old_loc['y'])}
-        else:
-            return self._execute(Command.GET_ELEMENT_LOCATION_ONCE_SCROLLED_INTO_VIEW)['value']
+        old_loc = self._execute(Command.W3C_EXECUTE_SCRIPT, {
+            'script': "arguments[0].scrollIntoView(true); return arguments[0].getBoundingClientRect()",
+            'args': [self]})['value']
+        return {"x": round(old_loc['x']),
+                "y": round(old_loc['y'])}
 
     @property
-    def size(self):
+    def size(self) -> dict:
         """The size of the element."""
-        size = {}
-        if self._w3c:
-            size = self._execute(Command.GET_ELEMENT_RECT)['value']
-        else:
-            size = self._execute(Command.GET_ELEMENT_SIZE)['value']
+        size = self._execute(Command.GET_ELEMENT_RECT)['value']
         new_size = {"height": size["height"],
                     "width": size["width"]}
         return new_size
 
-    def value_of_css_property(self, property_name):
+    def value_of_css_property(self, property_name) -> str:
         """The value of a CSS property."""
         return self._execute(Command.GET_ELEMENT_VALUE_OF_CSS_PROPERTY, {
             'propertyName': property_name})['value']
 
     @property
-    def location(self):
+    def location(self) -> dict:
         """The location of the element in the renderable canvas."""
-        if self._w3c:
-            old_loc = self._execute(Command.GET_ELEMENT_RECT)['value']
-        else:
-            old_loc = self._execute(Command.GET_ELEMENT_LOCATION)['value']
+        old_loc = self._execute(Command.GET_ELEMENT_RECT)['value']
         new_loc = {"x": round(old_loc['x']),
                    "y": round(old_loc['y'])}
         return new_loc
 
     @property
-    def rect(self):
+    def rect(self) -> dict:
         """A dictionary with the size and location of the element."""
-        if self._w3c:
-            return self._execute(Command.GET_ELEMENT_RECT)['value']
-        else:
-            rect = self.size.copy()
-            rect.update(self.location)
-            return rect
+        return self._execute(Command.GET_ELEMENT_RECT)['value']
 
     @property
-    def screenshot_as_base64(self):
+    def aria_role(self) -> str:
+        """ Returns the ARIA role of the current web element"""
+        return self._execute(Command.GET_ELEMENT_ARIA_ROLE)['value']
+
+    @property
+    def accessible_name(self) -> str:
+        """Returns the ARIA Level of the current webelement"""
+        return self._execute(Command.GET_ELEMENT_ARIA_LABEL)['value']
+
+    @property
+    def screenshot_as_base64(self) -> str:
         """
         Gets the screenshot of the current element as a base64 encoded string.
 
         :Usage:
-            img_b64 = element.screenshot_as_base64
+            ::
+
+                img_b64 = element.screenshot_as_base64
         """
         return self._execute(Command.ELEMENT_SCREENSHOT)['value']
 
     @property
-    def screenshot_as_png(self):
+    def screenshot_as_png(self) -> str:
         """
         Gets the screenshot of the current element as a binary data.
 
         :Usage:
-            element_png = element.screenshot_as_png
-        """
-        return base64.b64decode(self.screenshot_as_base64.encode('ascii'))
+            ::
 
-    def screenshot(self, filename):
+                element_png = element.screenshot_as_png
+        """
+        return b64decode(self.screenshot_as_base64.encode('ascii'))
+
+    def screenshot(self, filename) -> bool:
         """
         Saves a screenshot of the current element to a PNG image file. Returns
            False if there is any IOError, else returns True. Use full paths in
@@ -577,7 +652,9 @@ class WebElement(object):
            should end with a `.png` extension.
 
         :Usage:
-            element.screenshot('/Screenshots/foo.png')
+            ::
+
+                element.screenshot('/Screenshots/foo.png')
         """
         if not filename.lower().endswith('.png'):
             warnings.warn("name used for saved screenshot does not match file "
@@ -598,7 +675,7 @@ class WebElement(object):
         return self._parent
 
     @property
-    def id(self):
+    def id(self) -> str:
         """Internal ID used by selenium.
 
         This is mainly for internal use. Simple use cases such as checking if 2
@@ -634,65 +711,65 @@ class WebElement(object):
 
     def find_element(self, by=By.ID, value=None):
         """
-        Find an element given a By strategy and locator. Prefer the find_element_by_* methods when
-        possible.
+        Find an element given a By strategy and locator.
 
         :Usage:
-            element = element.find_element(By.ID, 'foo')
+            ::
+
+                element = element.find_element(By.ID, 'foo')
 
         :rtype: WebElement
         """
-        if self._w3c:
-            if by == By.ID:
-                by = By.CSS_SELECTOR
-                value = '[id="%s"]' % value
-            elif by == By.TAG_NAME:
-                by = By.CSS_SELECTOR
-            elif by == By.CLASS_NAME:
-                by = By.CSS_SELECTOR
-                value = ".%s" % value
-            elif by == By.NAME:
-                by = By.CSS_SELECTOR
-                value = '[name="%s"]' % value
+        if by == By.ID:
+            by = By.CSS_SELECTOR
+            value = '[id="%s"]' % value
+        elif by == By.TAG_NAME:
+            by = By.CSS_SELECTOR
+        elif by == By.CLASS_NAME:
+            by = By.CSS_SELECTOR
+            value = ".%s" % value
+        elif by == By.NAME:
+            by = By.CSS_SELECTOR
+            value = '[name="%s"]' % value
 
         return self._execute(Command.FIND_CHILD_ELEMENT,
                              {"using": by, "value": value})['value']
 
     def find_elements(self, by=By.ID, value=None):
         """
-        Find elements given a By strategy and locator. Prefer the find_elements_by_* methods when
-        possible.
+        Find elements given a By strategy and locator.
 
         :Usage:
-            element = element.find_elements(By.CLASS_NAME, 'foo')
+            ::
+
+                element = element.find_elements(By.CLASS_NAME, 'foo')
 
         :rtype: list of WebElement
         """
-        if self._w3c:
-            if by == By.ID:
-                by = By.CSS_SELECTOR
-                value = '[id="%s"]' % value
-            elif by == By.TAG_NAME:
-                by = By.CSS_SELECTOR
-            elif by == By.CLASS_NAME:
-                by = By.CSS_SELECTOR
-                value = ".%s" % value
-            elif by == By.NAME:
-                by = By.CSS_SELECTOR
-                value = '[name="%s"]' % value
+        if by == By.ID:
+            by = By.CSS_SELECTOR
+            value = '[id="%s"]' % value
+        elif by == By.TAG_NAME:
+            by = By.CSS_SELECTOR
+        elif by == By.CLASS_NAME:
+            by = By.CSS_SELECTOR
+            value = ".%s" % value
+        elif by == By.NAME:
+            by = By.CSS_SELECTOR
+            value = '[name="%s"]' % value
 
         return self._execute(Command.FIND_CHILD_ELEMENTS,
                              {"using": by, "value": value})['value']
 
     def __hash__(self):
-        return int(hashlib.md5(self._id.encode('utf-8')).hexdigest(), 16)
+        return int(md5_hash(self._id.encode('utf-8')).hexdigest(), 16)
 
     def _upload(self, filename):
-        fp = IOStream()
+        fp = BytesIO()
         zipped = zipfile.ZipFile(fp, 'w', zipfile.ZIP_DEFLATED)
         zipped.write(filename, os.path.split(filename)[1])
         zipped.close()
-        content = base64.encodestring(fp.getvalue())
+        content = encodebytes(fp.getvalue())
         if not isinstance(content, str):
             content = content.decode('utf-8')
         try:

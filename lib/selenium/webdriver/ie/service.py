@@ -15,7 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from typing import List
+
 from selenium.webdriver.common import service
+
+
+DEFAULT_EXECUTABLE_PATH = 'IEDriverServer.exe'
 
 
 class Service(service.Service):
@@ -23,7 +28,9 @@ class Service(service.Service):
     Object that manages the starting and stopping of the IEDriver
     """
 
-    def __init__(self, executable_path, port=0, host=None, log_level=None, log_file=None):
+    def __init__(self, executable_path: str = DEFAULT_EXECUTABLE_PATH,
+                 port: int = 0, host: str = None,
+                 log_level: str = None, log_file: str = None):
         """
         Creates a new instance of the Service
 
@@ -36,15 +43,15 @@ class Service(service.Service):
          - log_file : Target of logging of service, may be "stdout", "stderr" or file path.
            Default is "stdout"."""
         self.service_args = []
-        if host is not None:
+        if host:
             self.service_args.append("--host=%s" % host)
-        if log_level is not None:
+        if log_level:
             self.service_args.append("--log-level=%s" % log_level)
-        if log_file is not None:
+        if log_file:
             self.service_args.append("--log-file=%s" % log_file)
 
         service.Service.__init__(self, executable_path, port=port,
-                                 start_error_message="Please download from http://selenium-release.storage.googleapis.com/index.html and read up at https://github.com/SeleniumHQ/selenium/wiki/InternetExplorerDriver")
+                                 start_error_message="Please download from https://www.selenium.dev/downloads/ and read up at https://github.com/SeleniumHQ/selenium/wiki/InternetExplorerDriver")
 
-    def command_line_args(self):
+    def command_line_args(self) -> List[str]:
         return ["--port=%d" % self.port] + self.service_args

@@ -19,10 +19,6 @@
 The ActionChains implementation,
 """
 
-import time
-
-from selenium.webdriver.remote.command import Command
-
 from .utils import keys_to_typing
 from .actions.action_builder import ActionBuilder
 
@@ -41,15 +37,15 @@ class ActionChains(object):
 
     ActionChains can be used in a chain pattern::
 
-        menu = driver.find_element_by_css_selector(".nav")
-        hidden_submenu = driver.find_element_by_css_selector(".nav #submenu1")
+        menu = driver.find_element(By.CSS_SELECTOR, ".nav")
+        hidden_submenu = driver.find_element(By.CSS_SELECTOR, ".nav #submenu1")
 
         ActionChains(driver).move_to_element(menu).click(hidden_submenu).perform()
 
     Or actions can be queued up one by one, then performed.::
 
-        menu = driver.find_element_by_css_selector(".nav")
-        hidden_submenu = driver.find_element_by_css_selector(".nav #submenu1")
+        menu = driver.find_element(By.CSS_SELECTOR, ".nav")
+        hidden_submenu = driver.find_element(By.CSS_SELECTOR, ".nav #submenu1")
 
         actions = ActionChains(driver)
         actions.move_to_element(menu)
@@ -60,34 +56,31 @@ class ActionChains(object):
     another.
     """
 
-    def __init__(self, driver):
+    def __init__(self, driver, duration=250):
         """
         Creates a new ActionChains.
 
         :Args:
          - driver: The WebDriver instance which performs user actions.
+         - duration: override the default 250 msecs of DEFAULT_MOVE_DURATION in PointerInput
         """
         self._driver = driver
         self._actions = []
-        if self._driver.w3c:
-            self.w3c_actions = ActionBuilder(driver)
+        self.w3c_actions = ActionBuilder(driver, duration=duration)
 
     def perform(self):
         """
         Performs all stored actions.
         """
-        if self._driver.w3c:
-            self.w3c_actions.perform()
-        else:
-            for action in self._actions:
-                action()
+        self.w3c_actions.perform()
 
     def reset_actions(self):
         """
-            Clears actions that are already stored locally and on the remote end
+        Clears actions that are already stored locally and on the remote end
         """
-        if self._driver.w3c:
-            self.w3c_actions.clear_actions()
+        self.w3c_actions.clear_actions()
+        for device in self.w3c_actions.devices:
+            device.clear_actions()
         self._actions = []
 
     def click(self, on_element=None):
@@ -100,13 +93,11 @@ class ActionChains(object):
         """
         if on_element:
             self.move_to_element(on_element)
-        if self._driver.w3c:
-            self.w3c_actions.pointer_action.click()
-            self.w3c_actions.key_action.pause()
-            self.w3c_actions.key_action.pause()
-        else:
-            self._actions.append(lambda: self._driver.execute(
-                                 Command.CLICK, {'button': 0}))
+
+        self.w3c_actions.pointer_action.click()
+        self.w3c_actions.key_action.pause()
+        self.w3c_actions.key_action.pause()
+
         return self
 
     def click_and_hold(self, on_element=None):
@@ -119,12 +110,10 @@ class ActionChains(object):
         """
         if on_element:
             self.move_to_element(on_element)
-        if self._driver.w3c:
-            self.w3c_actions.pointer_action.click_and_hold()
-            self.w3c_actions.key_action.pause()
-        else:
-            self._actions.append(lambda: self._driver.execute(
-                                 Command.MOUSE_DOWN, {}))
+
+        self.w3c_actions.pointer_action.click_and_hold()
+        self.w3c_actions.key_action.pause()
+
         return self
 
     def context_click(self, on_element=None):
@@ -137,13 +126,11 @@ class ActionChains(object):
         """
         if on_element:
             self.move_to_element(on_element)
-        if self._driver.w3c:
-            self.w3c_actions.pointer_action.context_click()
-            self.w3c_actions.key_action.pause()
-            self.w3c_actions.key_action.pause()
-        else:
-            self._actions.append(lambda: self._driver.execute(
-                                 Command.CLICK, {'button': 2}))
+
+        self.w3c_actions.pointer_action.context_click()
+        self.w3c_actions.key_action.pause()
+        self.w3c_actions.key_action.pause()
+
         return self
 
     def double_click(self, on_element=None):
@@ -156,13 +143,11 @@ class ActionChains(object):
         """
         if on_element:
             self.move_to_element(on_element)
-        if self._driver.w3c:
-            self.w3c_actions.pointer_action.double_click()
-            for _ in range(4):
-                self.w3c_actions.key_action.pause()
-        else:
-            self._actions.append(lambda: self._driver.execute(
-                                 Command.DOUBLE_CLICK, {}))
+
+        self.w3c_actions.pointer_action.double_click()
+        for _ in range(4):
+            self.w3c_actions.key_action.pause()
+
         return self
 
     def drag_and_drop(self, source, target):
@@ -210,13 +195,10 @@ class ActionChains(object):
         """
         if element:
             self.click(element)
-        if self._driver.w3c:
-            self.w3c_actions.key_action.key_down(value)
-            self.w3c_actions.pointer_action.pause()
-        else:
-            self._actions.append(lambda: self._driver.execute(
-                Command.SEND_KEYS_TO_ACTIVE_ELEMENT,
-                {"value": keys_to_typing(value)}))
+
+        self.w3c_actions.key_action.key_down(value)
+        self.w3c_actions.pointer_action.pause()
+
         return self
 
     def key_up(self, value, element=None):
@@ -235,13 +217,10 @@ class ActionChains(object):
         """
         if element:
             self.click(element)
-        if self._driver.w3c:
-            self.w3c_actions.key_action.key_up(value)
-            self.w3c_actions.pointer_action.pause()
-        else:
-            self._actions.append(lambda: self._driver.execute(
-                Command.SEND_KEYS_TO_ACTIVE_ELEMENT,
-                {"value": keys_to_typing(value)}))
+
+        self.w3c_actions.key_action.key_up(value)
+        self.w3c_actions.pointer_action.pause()
+
         return self
 
     def move_by_offset(self, xoffset, yoffset):
@@ -252,14 +231,10 @@ class ActionChains(object):
          - xoffset: X offset to move to, as a positive or negative integer.
          - yoffset: Y offset to move to, as a positive or negative integer.
         """
-        if self._driver.w3c:
-            self.w3c_actions.pointer_action.move_by(xoffset, yoffset)
-            self.w3c_actions.key_action.pause()
-        else:
-            self._actions.append(lambda: self._driver.execute(
-                Command.MOVE_TO, {
-                    'xoffset': int(xoffset),
-                    'yoffset': int(yoffset)}))
+
+        self.w3c_actions.pointer_action.move_by(xoffset, yoffset)
+        self.w3c_actions.key_action.pause()
+
         return self
 
     def move_to_element(self, to_element):
@@ -269,12 +244,10 @@ class ActionChains(object):
         :Args:
          - to_element: The WebElement to move to.
         """
-        if self._driver.w3c:
-            self.w3c_actions.pointer_action.move_to(to_element)
-            self.w3c_actions.key_action.pause()
-        else:
-            self._actions.append(lambda: self._driver.execute(
-                                 Command.MOVE_TO, {'element': to_element.id}))
+
+        self.w3c_actions.pointer_action.move_to(to_element)
+        self.w3c_actions.key_action.pause()
+
         return self
 
     def move_to_element_with_offset(self, to_element, xoffset, yoffset):
@@ -287,24 +260,20 @@ class ActionChains(object):
          - xoffset: X offset to move to.
          - yoffset: Y offset to move to.
         """
-        if self._driver.w3c:
-            self.w3c_actions.pointer_action.move_to(to_element, xoffset, yoffset)
-            self.w3c_actions.key_action.pause()
-        else:
-            self._actions.append(
-                lambda: self._driver.execute(Command.MOVE_TO, {
-                    'element': to_element.id,
-                    'xoffset': int(xoffset),
-                    'yoffset': int(yoffset)}))
+
+        self.w3c_actions.pointer_action.move_to(to_element,
+                                                int(xoffset),
+                                                int(yoffset))
+        self.w3c_actions.key_action.pause()
+
         return self
 
     def pause(self, seconds):
         """ Pause all inputs for the specified duration in seconds """
-        if self._driver.w3c:
-            self.w3c_actions.pointer_action.pause(seconds)
-            self.w3c_actions.key_action.pause(seconds)
-        else:
-            self._actions.append(lambda: time.sleep(seconds))
+
+        self.w3c_actions.pointer_action.pause(seconds)
+        self.w3c_actions.key_action.pause(seconds)
+
         return self
 
     def release(self, on_element=None):
@@ -317,11 +286,10 @@ class ActionChains(object):
         """
         if on_element:
             self.move_to_element(on_element)
-        if self._driver.w3c:
-            self.w3c_actions.pointer_action.release()
-            self.w3c_actions.key_action.pause()
-        else:
-            self._actions.append(lambda: self._driver.execute(Command.MOUSE_UP, {}))
+
+        self.w3c_actions.pointer_action.release()
+        self.w3c_actions.key_action.pause()
+
         return self
 
     def send_keys(self, *keys_to_send):
@@ -333,13 +301,11 @@ class ActionChains(object):
            'Keys' class.
         """
         typing = keys_to_typing(keys_to_send)
-        if self._driver.w3c:
-            for key in typing:
-                self.key_down(key)
-                self.key_up(key)
-        else:
-            self._actions.append(lambda: self._driver.execute(
-                Command.SEND_KEYS_TO_ACTIVE_ELEMENT, {'value': typing}))
+
+        for key in typing:
+            self.key_down(key)
+            self.key_up(key)
+
         return self
 
     def send_keys_to_element(self, element, *keys_to_send):
@@ -355,7 +321,22 @@ class ActionChains(object):
         self.send_keys(*keys_to_send)
         return self
 
+    def scroll(self, x: int, y: int, delta_x: int, delta_y: int, duration: int = 0, origin: str = "viewport"):
+        """
+        Sends wheel scroll information to the browser to be processed.
+
+        :Args:
+         - x: starting X coordinate
+         - y: starting Y coordinate
+         - delta_x: the distance the mouse will scroll on the x axis
+         - delta_y: the distance the mouse will scroll on the y axis
+        """
+        self.w3c_actions.wheel_action.scroll(x=x, y=y, delta_x=delta_x, delta_y=delta_y,
+                                             duration=duration, origin=origin)
+        return self
+
     # Context manager so ActionChains can be used in a 'with .. as' statements.
+
     def __enter__(self):
         return self  # Return created instance of self.
 

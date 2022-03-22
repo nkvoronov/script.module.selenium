@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="script.module.selenium"
 		name="Selenium"
-		version="3.141.59.042"
+		version="4.1.3.043"
 		provider-name="YDRAGON">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0" />

@@ -18,12 +18,16 @@
 from selenium.webdriver.common import service
 
 
+DEFAULT_EXECUTABLE_PATH = "WebKitWebDriver"
+
+
 class Service(service.Service):
     """
     Object that manages the starting and stopping of the WebKitGTKDriver
     """
 
-    def __init__(self, executable_path, port=0, log_path=None):
+    def __init__(self, executable_path: str = DEFAULT_EXECUTABLE_PATH,
+                 port=0, log_path=None):
         """
         Creates a new instance of the Service
 
@@ -32,7 +36,7 @@ class Service(service.Service):
          - port : Port the service is running on
          - log_path : Path for the WebKitGTKDriver service to log to
         """
-        log_file = open(log_path, "wb") if log_path is not None and log_path != "" else None
+        log_file = open(log_path, "wb") if log_path else None
         service.Service.__init__(self, executable_path, port, log_file)
 
     def command_line_args(self):

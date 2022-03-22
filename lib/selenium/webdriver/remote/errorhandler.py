@@ -15,11 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from typing import Any, Dict, Mapping, Type, TypeVar
+
 from selenium.common.exceptions import (ElementClickInterceptedException,
                                         ElementNotInteractableException,
                                         ElementNotSelectableException,
                                         ElementNotVisibleException,
-                                        ErrorInResponseException,
                                         InsecureCertificateException,
                                         InvalidCoordinatesException,
                                         InvalidElementStateException,
@@ -34,6 +35,7 @@ from selenium.common.exceptions import (ElementClickInterceptedException,
                                         NoSuchCookieException,
                                         NoSuchElementException,
                                         NoSuchFrameException,
+                                        NoSuchShadowRootException,
                                         NoSuchWindowException,
                                         NoAlertPresentException,
                                         ScreenshotException,
@@ -45,10 +47,9 @@ from selenium.common.exceptions import (ElementClickInterceptedException,
                                         UnknownMethodException,
                                         WebDriverException)
 
-try:
-    basestring
-except NameError:  # Python 3.x
-    basestring = str
+
+_KT = TypeVar("_KT")
+_VT = TypeVar("_VT")
 
 
 class ErrorCode(object):
@@ -59,6 +60,7 @@ class ErrorCode(object):
     SUCCESS = 0
     NO_SUCH_ELEMENT = [7, 'no such element']
     NO_SUCH_FRAME = [8, 'no such frame']
+    NO_SUCH_SHADOW_ROOT = ["no such shadow root"]
     UNKNOWN_COMMAND = [9, 'unknown command']
     STALE_ELEMENT_REFERENCE = [10, 'stale element reference']
     ELEMENT_NOT_VISIBLE = [11, 'element not visible']
@@ -100,7 +102,8 @@ class ErrorHandler(object):
     """
     Handles errors returned by the WebDriver server.
     """
-    def check_response(self, response):
+
+    def check_response(self, response: Dict[str, Any]) -> None:
         """
         Checks that a JSON response from the WebDriver does not have an error.
 
@@ -111,25 +114,25 @@ class ErrorHandler(object):
         :Raises: If the response contains an error message.
         """
         status = response.get('status', None)
-        if status is None or status == ErrorCode.SUCCESS:
+        if not status or status == ErrorCode.SUCCESS:
             return
         value = None
         message = response.get("message", "")
-        screen = response.get("screen", "")
+        screen: str = response.get("screen", "")
         stacktrace = None
         if isinstance(status, int):
             value_json = response.get('value', None)
-            if value_json and isinstance(value_json, basestring):
+            if value_json and isinstance(value_json, str):
                 import json
                 try:
                     value = json.loads(value_json)
                     if len(value.keys()) == 1:
                         value = value['value']
                     status = value.get('error', None)
-                    if status is None:
-                        status = value["status"]
-                        message = value["value"]
-                        if not isinstance(message, basestring):
+                    if not status:
+                        status = value.get("status", ErrorCode.UNKNOWN_ERROR)
+                        message = value.get("value") or value.get("message")
+                        if not isinstance(message, str):
                             value = message
                             message = message.get('message')
                     else:
@@ -137,11 +140,13 @@ class ErrorHandler(object):
                 except ValueError:
                     pass
 
-        exception_class = ErrorInResponseException
+        exception_class: Type[WebDriverException]
         if status in ErrorCode.NO_SUCH_ELEMENT:
             exception_class = NoSuchElementException
         elif status in ErrorCode.NO_SUCH_FRAME:
             exception_class = NoSuchFrameException
+        elif status in ErrorCode.NO_SUCH_SHADOW_ROOT:
+            exception_class = NoSuchShadowRootException
         elif status in ErrorCode.NO_SUCH_WINDOW:
             exception_class = NoSuchWindowException
         elif status in ErrorCode.STALE_ELEMENT_REFERENCE:
@@ -200,46 +205,46 @@ class ErrorHandler(object):
             exception_class = UnknownMethodException
         else:
             exception_class = WebDriverException
-        if value == '' or value is None:
+        if not value:
             value = response['value']
-        if isinstance(value, basestring):
-            if exception_class == ErrorInResponseException:
-                raise exception_class(response, value)
+        if isinstance(value, str):
             raise exception_class(value)
         if message == "" and 'message' in value:
             message = value['message']
 
-        screen = None
+        screen = None  # type: ignore[assignment]
         if 'screen' in value:
             screen = value['screen']
 
         stacktrace = None
-        if 'stackTrace' in value and value['stackTrace']:
-            stacktrace = []
-            try:
-                for frame in value['stackTrace']:
-                    line = self._value_or_default(frame, 'lineNumber', '')
-                    file = self._value_or_default(frame, 'fileName', '<anonymous>')
-                    if line:
-                        file = "%s:%s" % (file, line)
-                    meth = self._value_or_default(frame, 'methodName', '<anonymous>')
-                    if 'className' in frame:
-                        meth = "%s.%s" % (frame['className'], meth)
-                    msg = "    at %s (%s)"
-                    msg = msg % (meth, file)
-                    stacktrace.append(msg)
-            except TypeError:
-                pass
-        if exception_class == ErrorInResponseException:
-            raise exception_class(response, message)
-        elif exception_class == UnexpectedAlertPresentException:
+        st_value = value.get('stackTrace') or value.get('stacktrace')
+        if st_value:
+            if isinstance(st_value, str):
+                stacktrace = st_value.split('\n')
+            else:
+                stacktrace = []
+                try:
+                    for frame in st_value:
+                        line = self._value_or_default(frame, 'lineNumber', '')
+                        file = self._value_or_default(frame, 'fileName', '<anonymous>')
+                        if line:
+                            file = "%s:%s" % (file, line)
+                        meth = self._value_or_default(frame, 'methodName', '<anonymous>')
+                        if 'className' in frame:
+                            meth = "%s.%s" % (frame['className'], meth)
+                        msg = "    at %s (%s)"
+                        msg = msg % (meth, file)
+                        stacktrace.append(msg)
+                except TypeError:
+                    pass
+        if exception_class == UnexpectedAlertPresentException:
             alert_text = None
             if 'data' in value:
                 alert_text = value['data'].get('text')
             elif 'alert' in value:
                 alert_text = value['alert'].get('text')
-            raise exception_class(message, screen, stacktrace, alert_text)
+            raise exception_class(message, screen, stacktrace, alert_text)  # type: ignore[call-arg]  # mypy is not smart enough here
         raise exception_class(message, screen, stacktrace)
 
-    def _value_or_default(self, obj, key, default):
+    def _value_or_default(self, obj: Mapping[_KT, _VT], key: _KT, default: _VT) -> _VT:
         return obj[key] if key in obj else default
